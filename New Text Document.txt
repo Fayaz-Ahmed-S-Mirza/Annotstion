@@ -1,30 +1,35 @@
-from pdfminer.layout import LAParams, LTTextBox
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.converter import TextConverter
+from pdfminer.layout import LAParams
 from pdfminer.pdfpage import PDFPage
-from pdfminer.pdfinterp import PDFResourceManager
-from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.converter import PDFPageAggregator
+from io import StringIO
 
-def get_text_coordinates(pdf_file):
-    text_coordinates = []
-    # Create resource manager
-    rsrcmgr = PDFResourceManager()
+def extract_region_coordinates(pdf_file, start_text, end_text):
+    resource_manager = PDFResourceManager()
+    string_io = StringIO()
+    device = TextConverter(resource_manager, string_io, laparams=LAParams())
+    interpreter = PDFPageInterpreter(resource_manager, device)
     
-    # Set parameters for analysis.
-    laparams = LAParams()
+    start_found = False
+    end_found = False
     
-    # Create a PDF page aggregator object.
-    device = PDFPageAggregator(rsrcmgr, laparams=laparams)
-    interpreter = PDFPageInterpreter(rsrcmgr, device)
-    
-    # Open the PDF file.
-    with open(pdf_file, 'rb') as f:
-        for page in PDFPage.get_pages(f):
+    with open(pdf_file, 'rb') as fh:
+        for page in PDFPage.get_pages(fh, caching=True, check_extractable=True):
             interpreter.process_page(page)
             layout = device.get_result()
-            
-            for lt_obj in layout:
-                if isinstance(lt_obj, LTTextBox):
-                    for line in lt_obj:
-                        for char in line:
-                            text_coordinates.append((char.get_text(), char.bbox))
-    return text_coordinates
+            for obj in layout:
+                if hasattr(obj, 'get_text'):
+                    if start_text in obj.get_text():
+                        start_bbox = obj.bbox
+                        start_found = True
+                    if start_found and end_text in obj.get_text():
+                        end_bbox = obj.bbox
+                        end_found = True
+                        break
+                if end_found:
+                    break
+            if end_found:
+                break
+    print(start_bbox, end_bbox)
+    device.close()
+    string_io.close()
